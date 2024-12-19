@@ -6,3 +6,5 @@ lib64
 include
 bin
 reconftw
+EmailTest
+DDOS.sh
