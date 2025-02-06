@@ -1,5 +1,5 @@
 resultados
-
+gowitness.sqlite3
 env/
 lib
 lib64
@@ -8,3 +8,4 @@ bin
 reconftw
 EmailTest
 DDOS.sh
+screenshots
