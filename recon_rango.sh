@@ -13,66 +13,54 @@ fi
 RANGO_CIDR=$1
 OUTPUT_DIR="capturas"
 
-# Crear directorio de salida si no existe
+# Crear directorio de salida
 mkdir -p "$OUTPUT_DIR"
 
-# Generar lista de IPs y procesarlas (usando process substitution para heredar la trap)
-while read -r IP || [[ -n "$IP" ]]; do
-    echo "🔍 Comprobando IP: $IP"
+# Escanear puertos 80 y 443 con masscan
+echo "🔍 Escaneando $RANGO_CIDR con masscan..."
+masscan_temp=$(mktemp)
+sudo masscan "$RANGO_CIDR" -p80,443 --open-only -oG "$masscan_temp" || {
+    echo "❌ Fallo al ejecutar masscan. ¿Tienes permisos suficientes?";
+    rm -f "$masscan_temp";
+    exit 1;
+}
 
-    # Verificar si el host responde al ping
-    if ! ping -c 1 -W 1 "$IP" &>/dev/null; then
-        echo "❌ $IP no responde al ping. Omitiendo..."
-        continue
+# Procesar IPs y puertos
+declare -A IP_PORTS
+while IFS= read -r line; do
+    if [[ $line =~ Host:\ ([0-9.]+).*Ports:\ ([0-9]+)/ ]]; then
+        ip="${BASH_REMATCH[1]}"
+        port="${BASH_REMATCH[2]}"
+        IP_PORTS["$ip"]="${IP_PORTS["$ip"]} $port"
     fi
+done < <(grep 'Host:' "$masscan_temp")
+rm -f "$masscan_temp"
 
-    # Verificar si hay un servidor web en HTTP o HTTPS
-    if nc -z -w 1 "$IP" 80; then
-        PROTO="http"
-    elif nc -z -w 1 "$IP" 443; then
-        # Verificar si HTTPS responde correctamente (aunque sea con certificado inválido)
-        if ! HTTP_STATUS=$(curl -k --silent --fail --max-time 2 --write-out "%{http_code}" --output /dev/null "https://$IP"); then
-            echo "⚠️ SSL handshake fallido o error en HTTPS para $IP. Omitiendo..."
-            continue
-        fi
-        
-        if [[ "$HTTP_STATUS" -ge 200 && "$HTTP_STATUS" -lt 400 ]]; then
-            PROTO="https"
-        else
-            echo "⚠️ Error HTTP $HTTP_STATUS en HTTPS para $IP. Omitiendo..."
-            continue
-        fi
-    else
-        echo "❌ No hay servidor web en $IP. Omitiendo..."
-        continue
-    fi
-
-    # Verificación final antes de capturar
-    if ! HTTP_STATUS=$(curl -k --silent --fail --max-time 2 --write-out "%{http_code}" --output /dev/null "$PROTO://$IP"); then
-        echo "⚠️ Error de conexión en $PROTO://$IP. Omitiendo..."
-        continue
-    fi
+# Procesar cada IP
+for ip in "${!IP_PORTS[@]}"; do
+    ports="${IP_PORTS[$ip]}"
     
-    if [[ "$HTTP_STATUS" -lt 200 || "$HTTP_STATUS" -ge 400 ]]; then
-        echo "⚠️ Error HTTP $HTTP_STATUS en $PROTO://$IP. Omitiendo..."
-        continue
-    fi
-
-    echo "✅ Servidor OK en $PROTO://$IP (HTTP $HTTP_STATUS). Capturando..."
-
-    # Capturar la página con cutycapt (modo seguro con timeout)
-    if ! cutycapt --insecure --url="$PROTO://$IP" --out="$OUTPUT_DIR/$IP.png" --max-wait=5000; then
-        echo "⚠️ Falló la captura en: $IP"
-        rm -f "$OUTPUT_DIR/$IP.png"
-        continue
-    fi
-
-    # Verificar si la captura fue exitosa
-    if [ -f "$OUTPUT_DIR/$IP.png" ]; then
-        echo "📸 Captura guardada: $OUTPUT_DIR/$IP.png"
+    # Determinar protocolo (HTTP si 80 está abierto, sino HTTPS)
+    if [[ $ports =~ 80 ]]; then
+        PROTO="http"
     else
-        echo "⚠️ Falló la generación de la captura en: $IP"
+        PROTO="https"
     fi
-done < <(prips "$RANGO_CIDR")
 
-echo "✅ Proceso completado. Las capturas están en el directorio '$OUTPUT_DIR'."
+    echo "🔍 Comprobando $PROTO://$ip"
+
+    # Capturar con cutycapt (timeout de 20 segundos)
+    echo "📸 Intentando captura en $PROTO://$ip..."
+    if timeout 20s cutycapt --insecure --url="$PROTO://$ip" --out="$OUTPUT_DIR/$ip.png" --max-wait=20000 2>/dev/null; then
+        if [ -f "$OUTPUT_DIR/$ip.png" ]; then
+            echo "✅ Captura exitosa: $OUTPUT_DIR/$ip.png"
+        else
+            echo "⚠️ La captura falló en: $ip"
+        fi
+    else
+        echo "⌛ Tiempo excedido en $ip. Omitiendo..."
+        rm -f "$OUTPUT_DIR/$ip.png"
+    fi
+done
+
+echo "✅ Proceso completado. Las capturas están en '$OUTPUT_DIR'."
