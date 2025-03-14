@@ -263,7 +263,7 @@ check_dependencies() {
 
 # Función para mostrar un banner usando Figlet.
 show_banner() {
-    figlet -f slant XELOWARE
+    figlet -f slant ILLOWARE
 }
 
 # Valida que se haya pasado un dominio como argumento.

@@ -1,4 +1,4 @@
-# XELOWARE - Herramienta Integral de Análisis y Recon de Dominios
+# ILLOWARE - Herramienta Integral de Análisis y Recon de Dominios
 
 Este repositorio contiene un conjunto de herramientas para realizar análisis de seguridad y recopilación de información de dominios. Incluye:
 
@@ -14,7 +14,7 @@ Este repositorio contiene un conjunto de herramientas para realizar análisis de
 
 ## Contenido del Repositorio
 
-- **Xeloware.sh**:  
+- **Illoware.sh**:  
   Script principal en Bash que realiza el análisis de seguridad de un dominio. Entre sus funciones se incluyen:  
   - Verificar e instalar dependencias necesarias (gcc, go, python3, pip3, git, npm, bc, figlet, etc.).
   - Realizar consultas DNS, WHOIS, encabezados HTTP, escaneo con Nmap y enumeración de URLs.
