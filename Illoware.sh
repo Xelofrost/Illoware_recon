@@ -1,9 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 
+# Función para manejar errores (simula catch)
+error_handler() {
+    local exit_code=$?
+    local line_no=$1
+    echo -e "\n[❌] Error en la línea $line_no. Código de salida: $exit_code" >&2
+    echo "[!] Se ha detenido la ejecución del script."
+    exit $exit_code
+}
+# Establecer la trampa para capturar errores y pasar la línea donde ocurrió.
+trap 'error_handler ${LINENO}' ERR
+
 # Añadir directorio de herramientas al PATH desde el inicio
 TOOLS_DIR="$(pwd)/tools"
 export PATH="$PATH:$TOOLS_DIR/go/bin"
+RESOLVERS_FILE="$TOOLS_DIR/resolvers.txt"  # <-- Nueva línea añadida
 
 # Función de log silencioso: muestra mensajes solo si QUIET no está definido.
 log() {
@@ -86,7 +98,7 @@ display_brand() {
     if ! command -v figlet >/dev/null 2>&1; then
         install_with_pkg_manager "figlet" "figlet"
     fi
-    figlet -f slant ILLOWARE
+    figlet -f slant ILLOWWARE
 }
 
 # Función para verificar e instalar dependencias (la salida se controla mediante la función log)
@@ -289,16 +301,62 @@ collect_dns() {
     local domain="$1"
     local base_dir="$2"
     local clean_dir="$base_dir/clean"
-    dig +short A "$domain" > "$clean_dir/IP"
-    dig +short MX "$domain" > "$clean_dir/MX"
-    dig +short TXT "$domain" > "$clean_dir/TXT"
-    dig +short NS "$domain" > "$clean_dir/NS"
-    dig +short SRV "$domain" > "$clean_dir/SRV"
-    dig +short AAAA "$domain" > "$clean_dir/AAAA"
-    dig +short CNAME "$domain" > "$clean_dir/CNAME"
-    dig +short SOA "$domain" > "$clean_dir/SOA"
-    dig +short txt _dmarc."$domain" > "$clean_dir/DMARC"
-    dig +short txt default._domainkey "$domain" > "$clean_dir/DKIM"
+    
+    # Función auxiliar para ejecutar dig con reintentos
+    dig_with_retry() {
+        local query_type="$1"
+        local target="$2"
+        local output_file="$3"
+        
+        # Desactiva temporalmente el exit-on-error en esta función
+        set +e
+
+        # Construir una lista de resolvers: se mezclan algunos aleatorios del archivo, resolvers fijos y los primeros 10 del archivo
+        local resolvers=()
+        if [ -f "$RESOLVERS_FILE" ]; then
+            # Se agregan resolvers aleatorios (si el archivo existe)
+            resolvers+=( $(shuf -n 5 "$RESOLVERS_FILE" 2>/dev/null) )
+            # Y los primeros 10
+            resolvers+=( $(awk 'NR<=10' "$RESOLVERS_FILE" 2>/dev/null) )
+        fi
+        # Añadimos algunos resolvers públicos fijos
+        resolvers+=( "8.8.8.8" "1.1.1.1" "9.9.9.9" )
+        
+        # Eliminar duplicados
+        mapfile -t unique_resolvers < <(printf "%s\n" "${resolvers[@]}" | awk '!seen[$0]++')
+        
+        for resolver in "${unique_resolvers[@]}"; do
+            log "  Probando resolver: $resolver"
+            # Se usa timeout para evitar bloqueos; si falla, se continúa al siguiente resolver
+            if timeout 2 dig +short +time=2 +tries=1 @"$resolver" version.bind CHAOS TXT >/dev/null 2>&1; then
+                log "  Resolver activo: $resolver"
+                # Ejecuta la consulta y redirige posibles errores sin interrumpir el script
+                dig +short +time=3 +tries=2 @"$resolver" "$query_type" "$target" > "$output_file" 2>/dev/null || true
+                set -e  # Restablece el modo fail fast
+                return 0
+            else
+                log "  Resolver $resolver no respondió, continuando..."
+            fi
+        done
+        
+        log "  Usando resolver del sistema"
+        dig +short "$query_type" "$target" > "$output_file" 2>/dev/null || true
+        
+        set -e  # Restablece el modo fail fast al finalizar la función
+    }
+
+
+    # Ejecutar consultas para cada tipo de registro
+    dig_with_retry A "$domain" "$clean_dir/IP"
+    dig_with_retry MX "$domain" "$clean_dir/MX"
+    dig_with_retry TXT "$domain" "$clean_dir/TXT"
+    dig_with_retry NS "$domain" "$clean_dir/NS"
+    dig_with_retry SRV "$domain" "$clean_dir/SRV"
+    dig_with_retry AAAA "$domain" "$clean_dir/AAAA"
+    dig_with_retry CNAME "$domain" "$clean_dir/CNAME"
+    dig_with_retry SOA "$domain" "$clean_dir/SOA"
+    dig_with_retry TXT "_dmarc.$domain" "$clean_dir/DMARC"
+    dig_with_retry TXT "default._domainkey.$domain" "$clean_dir/DKIM"
 }
 
 # Extrae los rangos de IP utilizando whois sobre cada IP del registro A.
@@ -349,24 +407,16 @@ run_enumeration_tools() {
     gau "$domain" --o "$raw_dir/gau" 2>/dev/null || true
 
     log "  [+] Ejecutando Katana..."
-    katana -silent -u "https://$domain" > "$raw_dir/katana" 2>/dev/null || true
+    katana scan -u "https://$domain" > "$raw_dir/katana" 2>/dev/null || true
 
     log "  [+] Ejecutando CTFR..."
     ctfr -d "$domain" 2>/dev/null | awk '/[-]/{print $2}' > "$raw_dir/ctfr" || true
 
-    log "  [+] Filtrando resultados GAU..."
-    if [[ -s "$raw_dir/gau" ]]; then
-        rm -f "$raw_dir/gau_filtered"
-        while IFS= read -r url; do
-            result=$(httpx -silent -no-color -status-code -u "$url")
-            if [ -n "$result" ]; then
-                echo "$result" | awk '{print $1}' >> "$raw_dir/gau_filtered"
-            fi
-        done < "$raw_dir/gau"
-    else
-        touch "$raw_dir/gau_filtered"
-    fi
+    log "  [+] Combinando resultados de enumeración..."
+    # Se asegura que existan los archivos requeridos para el posterior procesamiento.
+    touch "$raw_dir"/{katana,ctfr,gau}
 }
+
 
 # Procesamiento de URLs con xargs y paralelismo controlado
 process_urls() {
@@ -375,10 +425,9 @@ process_urls() {
     local clean_dir="$base_dir/clean"
     
     echo "  [+] Procesando URLs..."
-    touch "$raw_dir"/{katana,ctfr,gau_filtered}
-    
-    # Combinar y normalizar URLs
-    cat "$raw_dir"/katana "$raw_dir"/ctfr "$raw_dir"/gau_filtered 2>/dev/null \
+    # Combina directamente las salidas de Katana, CTFR y GAU sin filtrado previo.
+    # Se normalizan las URLs agregando "http://" en aquellas que no lo tengan.
+    cat "$raw_dir/katana" "$raw_dir/ctfr" "$raw_dir/gau" 2>/dev/null \
         | sed -E '/^https?:\/\//! s#^#http://#' \
         | sort -u > "$raw_dir/all_urls"
     
@@ -387,26 +436,29 @@ process_urls() {
     echo "  [+] Verificando URLs activas..."
     > "$clean_dir/PATHS"  # Archivo final en clean
     
-    # Ejecutar httpx con filtrado de códigos de estado
-    (cat "$raw_dir/all_urls" | httpx -silent -threads 200 -mc 200,403,500 -timeout 5 -no-color -status-code | awk '{print $1}' >> "$clean_dir/PATHS") &
+    # Construye el comando de httpx, añadiendo los resolvers si el archivo existe
+    local httpx_cmd=("httpx" "-threads" "200" "-mc" "200,403,500" "-timeout" "5" "--no-color" "-silent" "--status-code")
+    if [ -f "$RESOLVERS_FILE" ]; then
+        resolvers=$(paste -sd, "$RESOLVERS_FILE")
+        httpx_cmd+=("-r" "$resolvers")
+    fi
+    
+    (cat "$raw_dir/all_urls" | "${httpx_cmd[@]}" | awk '{print $1}' >> "$clean_dir/PATHS") &
     local httpx_pid=$!
     
-    # Monitorear progreso
     local counter=0
     while kill -0 "$httpx_pid" 2>/dev/null; do
         counter=$(wc -l < "$clean_dir/PATHS")
         percent=$(echo "scale=1; $counter*100/$total" | bc -l)
-        printf "    Progreso: %d/%d (%s%%)\\r" "$counter" "$total" "$percent"
+        printf "    Progreso: %d/%d (%s%%)\r" "$counter" "$total" "$percent"
         sleep 1
     done
     
-    # Última actualización
     counter=$(wc -l < "$clean_dir/PATHS")
     percent=$(echo "scale=1; $counter*100/$total" | bc -l)
-    printf "    Progreso: %d/%d (%s%%)\\n" "$counter" "$total" "$percent"
+    printf "    Progreso: %d/%d (%s%%)\n" "$counter" "$total" "$percent"
     
-    local activas=$counter
-    echo "    URLs totales: $total | URLs activas: $activas"
+    echo "    URLs totales: $total | URLs activas: $counter"
 }
 
 # Elimina archivos vacíos
@@ -457,7 +509,6 @@ create_readme() {
     echo "" >> "$readme_file"
 }
 
-# Genera reporte final
 # Genera reporte final
 generate_report() {
     local domain="$1"
@@ -536,7 +587,6 @@ generate_report() {
 }
 
 # Función principal
-# Función principal
 main() {
     # 1. Verificar e instalar dependencias primero
     check_dependencies
@@ -550,12 +600,18 @@ main() {
     local domain="$1"
     log "[+] Dominio validado: $domain"
     
-    # 4. Crear estructura de directorios
+    # 4. Verificar resolvers
+    if [ ! -f "$RESOLVERS_FILE" ]; then
+        log "[!] Advertencia: No se encontró archivo de resolvers en $RESOLVERS_FILE"
+        log "    Ejecuta './update_resolvers.sh' para obtener la lista actualizada"
+    fi
+    
+    # 5. Crear estructura de directorios
     local base_dir
     base_dir=$(create_directories "$domain")
     log "[+] Directorios creados: $base_dir"
     
-    # 5. Fases de ejecución
+    # 6. Fases de ejecución
     log "[+] Fase de recolección DNS"
     collect_dns "$domain" "$base_dir"
     
@@ -586,7 +642,7 @@ main() {
     log "[+] Generando reporte final"
     generate_report "$domain" "$base_dir"
     
-    # 6. Resultados finales
+    # 7. Resultados finales
     log "[+] Script completado exitosamente!"
     log "    Resultados en: $base_dir"
     if [[ -f "$base_dir/resultado.html" ]]; then

@@ -3,6 +3,7 @@
 Este repositorio contiene un conjunto de herramientas para realizar análisis de seguridad y recopilación de información de dominios. Incluye:
 
 - Un **script principal en Bash** (`Illoware.sh`) que automatiza diversas fases del análisis (DNS, WHOIS, escaneo con Nmap, enumeración de URLs, generación de reportes, etc.).
+- Un **script de configuración de resolvers** (`Actualizar_Resolvers.sh`) que descarga, comprueba y prepara automáticamente los resolvers.
 - Un **archivo `package.json`** para gestionar dependencias de Node.js.
 - Un **archivo `requirements.txt`** para gestionar dependencias de Python.
 - Un **script de reseteo** (`reset.sh`) que limpia los resultados generados.
@@ -31,6 +32,9 @@ Este repositorio contiene un conjunto de herramientas para realizar análisis de
 - **reset.sh**:  
   Script en Bash para limpiar la carpeta de resultados.
 
+- **Actualizar_Resolvers.sh**:
+  Script que descarga una lista de DNS, las valida usando DNSvalidator y genera un archivo txt para ser usado.
+
 ---
 
 ## Cómo Usar los Scripts
@@ -52,7 +56,12 @@ Este repositorio contiene un conjunto de herramientas para realizar análisis de
 
 2. **Da permisos de ejecución:**
    ```bash
-   chmod +x Illoware.sh reset.sh
+   chmod +x Illoware.sh reset.sh Actualizar_Resolvers.sh
+   ```
+
+4. **Ejecuta el script de resolvers para generar una lista de resolvers:**
+   ```bash
+   ./Actualizar_Resolvers.sh
    ```
 
 3. **Ejecuta el script con un dominio:**
