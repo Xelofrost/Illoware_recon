@@ -3,11 +3,6 @@ gowitness.sqlite3
 env/
 lib
 lib64
-include
-bin
-reconftw
-EmailTest
-DDOS.sh
 screenshots
 capturas
 contador.sh
@@ -15,3 +10,6 @@ capturas_gw
 scrapping-asn.py
 TomarArchivosSSH.sh
 Illoware_Desarrollo.sh
+tools
+mindmap.md
+resume.cfg
