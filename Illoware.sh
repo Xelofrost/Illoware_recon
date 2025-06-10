@@ -75,64 +75,55 @@ install_with_pkg_manager() {
 install_go() {
     if ! command -v go >/dev/null 2>&1; then
         if [ -z "${QUIET-}" ]; then
-            echo "[+] Go no encontrado. Instalando Go en tools..."
+            echo "[+] Go no encontrado. Instalando Go globalmente usando el gestor de paquetes..."
         fi
-        mkdir -p "$TOOLS_DIR"
-        wget https://go.dev/dl/go1.21.6.linux-amd64.tar.gz -O "$TOOLS_DIR/go.tar.gz"
-        mkdir -p "$TOOLS_DIR/go"
-        tar -C "$TOOLS_DIR/go" -xzf "$TOOLS_DIR/go.tar.gz" --strip-components=1
-        rm "$TOOLS_DIR/go.tar.gz"
-        export PATH="$PATH:$TOOLS_DIR/go/bin"
+        install_with_pkg_manager "go" "golang"
         if [ -z "${QUIET-}" ]; then
-            echo "[+] Go instalado en $TOOLS_DIR/go."
+            echo "[+] Go instalado globalmente."
         fi
     fi
-    if command -v go >/dev/null 2>&1; then
-        export GOPATH="$(go env GOPATH)"
-        export PATH="$PATH:$GOPATH/bin"
-    fi
+    # Establece GOPATH e incluye el directorio de binarios de Go (global)
+    export GOPATH="$(go env GOPATH)"
+    export PATH="$PATH:$(go env GOPATH)/bin"
 }
 
+
 # Función para mostrar el banner de marca con Figlet.
-display_brand() {
+show_banner() {
     if ! command -v figlet >/dev/null 2>&1; then
         install_with_pkg_manager "figlet" "figlet"
     fi
-    figlet -f slant ILLOWWARE
+    figlet -f slant ILLOWARE
 }
+
+# Valida que el usuario pase un dominio y que tenga un formato razonable
+validate_input() {
+    if [ $# -ne 1 ]; then
+        echo "Uso: $0 <dominio>" >&2
+        exit 1
+    fi
+    local domain_regex='^([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,}$'
+    if ! [[ $1 =~ $domain_regex ]]; then
+        echo "Dominio inválido: '$1'" >&2
+        exit 1
+    fi
+}
+
 
 # Función para verificar e instalar dependencias (la salida se controla mediante la función log)
 check_dependencies() {
-    # Añadir directorios de herramientas Go al PATH antes de verificar
-    export PATH="$PATH:$TOOLS_DIR/go/bin"
-    for tool_dir in "$TOOLS_DIR"/*; do
-        if [ -d "$tool_dir" ]; then
-            export PATH="$PATH:$tool_dir"
-        fi
-    done
-
-    # Solo muestra mensajes y crea el directorio si no existe
-    if [ ! -d "$TOOLS_DIR" ]; then
-        log "============================================"
-        log "[+] Creando directorio 'tools' para almacenar herramientas..."
-        mkdir -p "$TOOLS_DIR"
-        log "[+] Directorio 'tools' creado: $TOOLS_DIR"
-        log "============================================"
-    fi
-
     # Función auxiliar para instalar herramientas Go en su propio subdirectorio
     install_go_tool() {
         local tool_name="$1"
         shift
-        local tool_dir="$TOOLS_DIR/$tool_name"
-        mkdir -p "$tool_dir"
-        log "[+] Instalando $tool_name en $tool_dir..."
-        export GOBIN="$tool_dir"
+        if [ -z "${QUIET-}" ]; then
+            echo "[+] Instalando $tool_name globalmente..."
+        fi
         go install "$@"
-        export PATH="$PATH:$tool_dir"
-        log "[+] $tool_name instalado correctamente."
-        log "--------------------------------------------"
-    }
+        if [ -z "${QUIET-}" ]; then
+            echo "[+] $tool_name instalado globalmente en $(go env GOPATH)/bin."
+        fi
+    }   
 
     # gcc
     if ! command -v gcc >/dev/null 2>&1; then
@@ -220,13 +211,13 @@ check_dependencies() {
                     ;;
                 ctfr)
                     if command -v pip3 >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
-                        local ctfr_dir="$TOOLS_DIR/ctfr"
+                        local ctfr_dir="/usr/local/ctfr"
                         if [ ! -d "$ctfr_dir" ]; then
-                            git clone https://github.com/UnaPibaGeek/ctfr.git "$ctfr_dir"
+                            sudo git clone https://github.com/UnaPibaGeek/ctfr.git "$ctfr_dir"
                         fi
                         cd "$ctfr_dir"
                         if [ ! -d "venv" ] || [ ! -f "venv/bin/activate" ]; then
-                            rm -rf venv
+                            sudo rm -rf venv
                             python3 -m venv venv
                         fi
                         source venv/bin/activate
@@ -237,10 +228,9 @@ check_dependencies() {
                             echo "#!/bin/bash"
                             echo "source \"$ctfr_dir/venv/bin/activate\""
                             echo "python \"$ctfr_dir/ctfr.py\" \"\$@\""
-                        } > ctfr
-                        chmod +x ctfr
+                        } | sudo tee /usr/local/bin/ctfr >/dev/null
+                        sudo chmod +x /usr/local/bin/ctfr
                         cd - >/dev/null
-                        export PATH="$PATH:$ctfr_dir"
                     else
                         echo "Falta pip3 o git para instalar ctfr."
                         exit 1
@@ -249,6 +239,8 @@ check_dependencies() {
                 httpx)
                     if command -v go >/dev/null 2>&1; then
                         install_go_tool httpx github.com/projectdiscovery/httpx/cmd/httpx@latest
+                        sudo rm -fr /usr/bin/httpx
+                        sudo ln -s "$(go env GOPATH)/bin/httpx" /usr/bin/httpx
                     else
                         echo "Falta Go para instalar httpx."
                         exit 1
@@ -273,19 +265,6 @@ check_dependencies() {
     done
 }
 
-# Función para mostrar un banner usando Figlet.
-show_banner() {
-    figlet -f slant ILLOWARE
-}
-
-# Valida que se haya pasado un dominio como argumento.
-validate_input() {
-    if [ -z "${1:-}" ]; then
-        echo "Error: No enviaste un dominio"
-        echo "Uso: $0 <dominio>"
-        exit 1
-    fi
-}
 
 # Crea la estructura de directorios para almacenar los resultados.
 create_directories() {

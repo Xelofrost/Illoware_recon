@@ -1,100 +1,131 @@
-# ILLOWARE - Herramienta Integral de Análisis y Recon de Dominios
+# Iloware GitHub Tools
 
-Este repositorio contiene un conjunto de herramientas para realizar análisis de seguridad y recopilación de información de dominios. Incluye:
+Este repositorio agrupa varios scripts Bash diseñados para facilitar tareas de reconocimiento de infraestructura y auditoría de dominios. Actualmente incluye los siguientes scripts:
 
-- Un **script principal en Bash** (`Illoware.sh`) que automatiza diversas fases del análisis (DNS, WHOIS, escaneo con Nmap, enumeración de URLs, generación de reportes, etc.).
-- Un **script de configuración de resolvers** (`Actualizar_Resolvers.sh`) que descarga, comprueba y prepara automáticamente los resolvers.
-- Un **archivo `package.json`** para gestionar dependencias de Node.js.
-- Un **archivo `requirements.txt`** para gestionar dependencias de Python.
-- Un **script de reseteo** (`reset.sh`) que limpia los resultados generados.
-
-> **Disclaimer:**  
-> Los archivos `package.json` y `requirements.txt` se incluyen como soporte para agilizar la gestión y actualización de dependencias en entornos donde se requiera una intervención manual. Sin embargo, no son indispensables para el funcionamiento del script principal, ya que éste descarga e instala automáticamente todas las dependencias necesarias durante su ejecución.
+1. **Recon Illoware** (`recon_illoware.sh`): Flujo completo de recolección de información (DNS, WHOIS, HTTP headers, escaneo Nmap, enumeración de rutas).
+2. **Actualizar Resolvers** (`update_resolvers.sh`): Genera y mantiene actualizada una lista de resolvers DNS eficientes usando `dnsvalidator`.
+3. **Recon Rango** (`recon_rango.sh`): Escanea un rango CIDR con `masscan`, captura capturas de pantalla de servicios HTTP/HTTPS.
+4. **Reset** (`reset.sh`): Limpia resultados eliminando la carpeta `resultados/`.
 
 ---
 
-## Contenido del Repositorio
+## Índice
 
-- **Illoware.sh**:  
-  Script principal en Bash que realiza el análisis de seguridad de un dominio. Entre sus funciones se incluyen:  
-  - Verificar e instalar dependencias necesarias (gcc, go, python3, pip3, git, npm, bc, figlet, etc.).
-  - Realizar consultas DNS, WHOIS, encabezados HTTP, escaneo con Nmap y enumeración de URLs.
-  - Organizar los resultados en una estructura de directorios y generar reportes (incluyendo un HTML generado con markmap, si está disponible).
+* [Requisitos](#requisitos)
+* [Instalación](#instalaci%C3%B3n)
+* [Scripts](#scripts)
 
-- **package.json**:  
-  Archivo de configuración para dependencias de Node.js.  
-  - Permite actualizar las dependencias utilizando herramientas como `npm-check-updates`.
-
-- **requirements.txt**:  
-  Archivo que lista las dependencias de Python necesarias para complementar el funcionamiento del proyecto.  
-  - Se puede actualizar ejecutando `pip freeze > requirements.txt` después de actualizar los paquetes.
-
-- **reset.sh**:  
-  Script en Bash para limpiar la carpeta de resultados.
-
-- **Actualizar_Resolvers.sh**:
-  Script que descarga una lista de DNS, las valida usando DNSvalidator y genera un archivo txt para ser usado.
+  * [Recon Illoware](#recon-illoware)
+  * [Actualizar Resolvers](#actualizar-resolvers)
+  * [Recon Rango](#recon-rango)
+  * [Reset](#reset)
+* [Contribuciones](#contribuciones)
+* [Licencia](#licencia)
 
 ---
 
-## Cómo Usar los Scripts
+## Requisitos
 
-### 1. Script Principal `Illoware.sh`
+* Sistema operativo Linux (compatible con Debian/Ubuntu, CentOS, Kali Linux, macOS con Homebrew).
+* Permisos `sudo` para instalación de dependencias y ejecución de escaneos.
+* Herramientas de línea de comandos:
 
-**Requisitos Previos:**
-- Sistema operativo basado en Linux (recomendado Ubuntu/Debian)
-- Acceso a internet para descargar dependencias
-- Permisos de ejecución (se configuran automáticamente)
+  * `bash`, `git`, `curl`, `whois`, `dig`, `nmap`, `masscan`, `cutycapt`.
+  * Lenguajes/interpretes: `go`, `python3`, `pip3`, `npm`.
+  * Gestores de paquetes: `apt-get`, `yum` o `brew`.
 
-**Pasos:**
+---
 
-1. **Clona el repositorio:**
-   ```bash
-   git clone https://github.com/Xelofrost/Illoware.git
-   cd Illoware
-   ```
+## Instalación
 
-2. **Da permisos de ejecución:**
-   ```bash
-   chmod +x Illoware.sh reset.sh Actualizar_Resolvers.sh
-   ```
+Clona el repositorio y dale permisos de ejecución a los scripts:
 
-4. **Ejecuta el script de resolvers para generar una lista de resolvers:**
-   ```bash
-   ./Actualizar_Resolvers.sh
-   ```
+```bash
+git clone https://github.com/tu-usuario/illoware-tools.git
+cd illoware-tools
+chmod +x *.sh
+```
 
-3. **Ejecuta el script con un dominio:**
-   (Reemplaza `example.com` por tu dominio objetivo)
-   ```bash
-   ./Illoware.sh example.com
-   ```
+Opcionalmente, añade la carpeta de scripts al `PATH` en tu `~/.bashrc`:
 
-**Qué ocurre durante la ejecución:**
+```bash
+export PATH="$PATH:$(pwd)"
+```
 
-- Verifica e instala automáticamente dependencias faltantes (ej: nmap, subfinder, httpx).
-- Crea una estructura de directorios `results/example.com/`.
-- Ejecuta todas las fases de análisis y guarda resultados en:
-  - `results/example.com/dns/`
-  - `results/example.com/nmap/`
-  - `results/example.com/urls/`
-  - `results/example.com/reports/`
-- Al finalizar, muestra una ruta al reporte principal:
-  ```bash
-  [+] Reporte HTML generado en: results/example.com/reports/overview.html
-  ```
+---
 
-### 2. Script de Reseteo `reset.sh`
+## Scripts
 
-Para eliminar todos los resultados generados:
+### Recon Illoware
+
+Flujo de reconocimiento completo para un dominio:
+
+```bash
+./recon_illoware.sh <dominio>
+```
+
+**Funcionalidades principales:**
+
+* Comprobación y auto-instalación de dependencias.
+* Recolección DNS (`dig`) para registros A, MX, TXT, NS, SRV, AAAA, CNAME, SOA, DMARC, DKIM.
+* Extracción de rangos IP (`whois`).
+* WHOIS y `dig` completos.
+* Encabezados HTTP (`curl -I`).
+* Escaneo de puertos y servicios con `nmap`.
+* Enumeración de rutas con `gau`, `katana`, `ctfr`.
+* Filtrado y verificación de URLs activas con `httpx`.
+* Generación de directorios de resultados (`./resultados/<dominio>/<timestamp>`).
+* Reporte en Markdown y HTML (via `markmap`).
+
+### Actualizar Resolvers
+
+Crea o actualiza el archivo `tools/resolvers.txt` con una lista de resolvers DNS:
+
+```bash
+./update_resolvers.sh
+```
+
+**Características:**
+
+* Instala `dnsvalidator` si no está presente.
+* Descarga y valida resolvers públicos.
+* Filtra IP válidas y garantiza al menos 100 entradas.
+* Añade resolvers de respaldo (Google, Cloudflare, Quad9).
+
+### Recon Rango
+
+Escanea un rango CIDR y captura screenshots de servicios web:
+
+```bash
+./recon_rango.sh <RANGO_CIDR>
+# Ejemplo:
+./recon_rango.sh 172.233.0.0/16
+```
+
+* Escanea puertos 80 y 443 con `masscan`.
+* Procesa IPs abiertas y determina protocolo (http/https).
+* Captura pantallas con `cutycapt` en `capturas/`.
+
+### Reset
+
+Elimina todos los resultados previos:
+
 ```bash
 ./reset.sh
 ```
 
-El script borrará la carpeta de resultados directamente (debe estar en el mismo directorio que Illoware.sh).
+---
 
-**Notas Importantes**
+## Contribuciones
 
-- **Primera Ejecución:** La primera vez puede tomar varios minutos mientras descarga e instala herramientas externas.
-- **Permisos de Instalación:** Es recomendable ejecutarlo con sudo la primera vez para que todas las dependencias se descarguen sin problemas.
-- **Resultados:** Todos los archivos de salida se organizan jerárquicamente en la carpeta `results/` para facilitar el análisis posterior.
+1. Haz un fork del proyecto.
+2. Crea un branch con tu feature o corrección (`git checkout -b feature/nombre`).
+3. Realiza tus cambios y haz commit (`git commit -m "Agrega descripción"`).
+4. Envía tus cambios al repositorio remoto (`git push origin feature/nombre`).
+5. Abre un Pull Request describiendo tus modificaciones.
+
+---
+
+## Licencia
+
+Este proyecto está licenciado bajo la [MIT License](LICENSE).

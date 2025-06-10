@@ -50,7 +50,7 @@ for ip in "${!IP_PORTS[@]}"; do
     echo "🔍 Comprobando $PROTO://$ip"
 
     # Capturar con cutycapt (timeout de 20 segundos)
-    echo "📸 Intentando captura en $PROTO://$ip..."
+    echo " Intentando captura en $PROTO://$ip..."
     if timeout 20s cutycapt --insecure --url="$PROTO://$ip" --out="$OUTPUT_DIR/$ip.png" --max-wait=20000 2>/dev/null; then
         if [ -f "$OUTPUT_DIR/$ip.png" ]; then
             echo "✅ Captura exitosa: $OUTPUT_DIR/$ip.png"
