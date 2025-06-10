@@ -125,7 +125,3 @@ Elimina todos los resultados previos:
 5. Abre un Pull Request describiendo tus modificaciones.
 
 ---
-
-## Licencia
-
-Este proyecto está licenciado bajo la [MIT License](LICENSE).
