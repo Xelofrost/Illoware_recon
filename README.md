@@ -41,8 +41,8 @@ Este repositorio agrupa varios scripts Bash diseñados para facilitar tareas de 
 Clona el repositorio y dale permisos de ejecución a los scripts:
 
 ```bash
-git clone https://github.com/tu-usuario/illoware-tools.git
-cd illoware-tools
+git clone https://github.com/Xelofrost/illoware_recon.git
+cd illoware_recon
 chmod +x *.sh
 ```
 
